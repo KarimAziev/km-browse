@@ -33,10 +33,6 @@
 (require 'url)
 (require 'url-http)
 
-
-(defvar km-browse-chrome-history-hash (make-hash-table :test 'equal))
-(defvar km-browse-chrome-bookmarks-hash (make-hash-table :test 'equal))
-
 (defcustom km-browse-search-engine "http://www.google.com/search?q=%s"
   "Default search engine."
   :type 'url
