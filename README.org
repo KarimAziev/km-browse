@@ -1,0 +1,52 @@
+* km-browse
+
+Misc Browse Utils.
+
+** Installation
+
+Emacs >= 28.1 is required.
+
+*** Manual
+
+Ensure that you have installed required dependencies:
+- ~emacs~ >= 28.1
+
+Download the source code and put it wherever you like, e.g. into =~/.emacs.d/km-browse/=
+
+#+begin_src shell :eval no
+git clone https://github.com/KarimAziev/km-browse.git ~/.emacs.d/km-browse/
+#+end_src
+
+Add the downloaded directory to the load path:
+
+#+begin_src elisp :eval no
+(add-to-list 'load-path "~/.emacs.d/km-browse/")
+(require 'km-browse)
+#+end_src
+
+#+begin_src elisp :eval no
+(use-package km-browse
+  :straight (km-browse
+             :repo "KarimAziev/km-browse"
+             :type git
+             :host github)
+  :bind ((:map km-browse-actions-map
+               ("C-j" . km-browse-chrome-xwidget-no-exit)
+               ("C-<return>" . km-browse-chrome-browse-new)
+               ("M-w" . km-browse-chrome-copy)
+               ("C-c TAB" . km-browse-insert)
+               ("C-c C-l" . km-browse-chrome-localhost-and-exit)
+               ("C-c C-p" . km-browse-chrome-pdf-and-exit)
+               ("C-c C-o o" . km-browse-chrome-xwidget-and-exit))
+         (:map km-browse-multi-source-minibuffer-map
+               ("C-." . km-browse-multi-source-read-source)
+               ("C-<" . km-browse-multi-source-select-prev)
+               ("C->" . km-browse-multi-source-select-next)))
+  :commands (km-browse-open-current-file-in-browser
+             km-browse-from-all-sources
+             km-browse-chrome-other
+             km-browse-chrome-bookmarks
+             km-browse-chrome-history
+             km-browse-chrome-insert
+             km-browse-xwidget-browse))
+#+end_src
