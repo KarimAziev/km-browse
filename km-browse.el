@@ -221,6 +221,24 @@ Allowed forms for SOURCES are
     (setq km-browse-multi-source--sources-list nil)
     curr))
 
+(defun km-browse-chrome-guess-config-file ()
+  "Return the most newer chrome history file."
+  (car
+   (seq-sort
+    #'file-newer-than-file-p
+    (seq-filter
+     #'file-exists-p
+     `("~/Library/Application Support/Google/Chrome"
+       "~/Library/Application Support/Google/Chrome"
+       "~/AppData/Local/Google/Chrome"
+       "~/snap/chromium"
+       "~/.config/google-chrome"
+       "~/.config/chromium"
+       ,(substitute-in-file-name
+         "$LOCALAPPDATA/Google/Chrome/")
+       ,(substitute-in-file-name
+         "$USERPROFILE/Local Settings/Application Data/Google/Chrome/"))))))
+
 (defun km-browse-chrome-guess-history-file ()
   "Return the most newer chrome history file."
   (car
@@ -854,7 +872,7 @@ If windows doesn't exists, split current window."
 
 
 
-(defun km-browse-insert (item &optional separator)
+(defun km-browse-insert-action (item &optional separator)
   "Insert or complete ITEM and SEPARATOR.
 If word at point is prefix of ITEM, complete it, else insert ITEM.
 Optional argument SEPARATOR is a string to insert just after ITEM.
@@ -919,10 +937,11 @@ Default value of SEPARATOR is space."
 
 
 ;;;###autoload
-(defun km-browse-chrome-insert ()
+(defun km-browse-insert ()
   "Insert current url and exit minibuffer."
   (interactive)
-  (km-browse-chrome-exit-with-action 'km-browse-insert))
+  (km-browse-chrome-exit-with-action 'km-browse-insert-action))
+
 
 ;;;###autoload
 (defun km-browse-chrome-copy ()
@@ -1164,6 +1183,18 @@ Default action is `km-browse-action-default'."
            (not (eq url 'km-browse-xdg-open)))
       (funcall program (concat "file:///" url))
     (funcall program url)))
+
+(defun km-browse-chrome-session-dump-get-active-tabs ()
+  "Return list of active tabs in google-chrome."
+  (when-let ((file (km-browse-chrome-guess-config-file)))
+    (when (executable-find "chrome-session-dump")
+      (split-string
+       (shell-command-to-string
+        (concat "chrome-session-dump\s"
+                (shell-quote-argument
+                 (expand-file-name
+                  file))))
+       "\n" t))))
 
 
 ;;;###autoload
