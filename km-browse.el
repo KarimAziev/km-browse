@@ -1184,6 +1184,16 @@ Default action is `km-browse-action-default'."
       (funcall program (concat "file:///" url))
     (funcall program url)))
 
+(defvar km-browse-chrome-sesssion-dump-buffer "*chrome-session-dump*")
+(defun km-browse-chrome-install-session-dump ()
+  "Install chrome-sesion-dump to /usr/bin/chrome-session-dump."
+  (let ((default-directory "/sudo::")
+        (inhibit-read-only t))
+    (async-shell-command
+     "sudo curl -o /usr/bin/chrome-session-dump -L 'https://github.com/lemnos/chrome-session-dump/releases/download/v0.0.2/chrome-session-dump-linux' && sudo chmod 755 /usr/bin/chrome-session-dump"
+     km-browse-chrome-sesssion-dump-buffer)))
+
+
 (defun km-browse-chrome-session-dump-get-active-tabs ()
   "Return list of active tabs in google-chrome."
   (when-let ((file (km-browse-chrome-guess-config-file)))
