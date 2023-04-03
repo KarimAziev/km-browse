@@ -51,6 +51,7 @@
 (defvar km-browse-chrome-history-hash (make-hash-table :test 'equal))
 
 
+;;;###autoload
 (defun km-browse-multi-source-select-prev ()
   "Throw to the catch tag ='next with -1."
   (interactive)
@@ -78,18 +79,20 @@
 (defvar km-browse-multi-source--sources-list nil
   "Normalized sources.")
 
+;;;###autoload
 (defun km-browse-multi-source-select-next ()
   "Throw to the catch tag ='next with 1."
   (interactive)
   (throw 'next
          1))
 
+;;;###autoload
 (defun km-browse-multi-source-read-source ()
   "Throw to the catch tag ='next with -1."
   (interactive)
   (let* ((source-label
           (completing-read "Source: "
-                           (mapcar 'car km-browse-multi-source--sources-list)))
+                           (mapcar #'car km-browse-multi-source--sources-list)))
          (pos (seq-position (nth 1 km-browse-multi-source--sources-list)
                             source-label)))
     (throw 'next (- pos km-browse-multi-source--current-index))))
@@ -1206,6 +1209,96 @@ Default action is `km-browse-action-default'."
                   file))))
        "\n" t))))
 
+(defun km-browse-url-get-all-urls ()
+  "Return list of urls from `kill-ring', buffer, chrome history, bookmarks etc."
+  (let ((extra-sources
+         (seq-filter
+          #'km-browse-web-url-p
+          (mapcar #'substring-no-properties
+                  (append (append (copy-tree kill-ring)
+                                  (copy-tree minibuffer-history))
+                          (delq nil (list (ignore-errors (thing-at-point
+                                                          'url t))
+                                          (ignore-errors
+                                            (gui-get-selection)))))))))
+    (append
+     extra-sources
+     (km-browse-chrome-session-dump-get-active-tabs)
+     (km-browse-read-chrome-bookmarks)
+     (km-browse-init-chrome-history-candidates))))
+
+(defun km-browse-read-url (&optional prompt)
+  "Read an url with PROMPT and completion from `km-browse-url-get-all-urls'."
+  (km-browse-completing-read
+   (or prompt "Url\s")
+   (km-browse-url-get-all-urls)))
+
+(defun km-browse-url-to-download-base-name (url)
+  "Convert URL to download name without extension."
+  (replace-regexp-in-string
+   "[-]\\{1\\}+"
+   "-"
+   (replace-regexp-in-string
+    split-string-default-separators
+    "-"
+    (car (last (split-string (file-name-sans-extension
+                              url)
+                             "/" t))))))
+
+(defun km-browse-download-as-org (url filename)
+  "Download URL in org mode format and save it as FILENAME."
+  (let ((str (shell-command-to-string (concat
+                                       "pandoc -f html -t org "
+                                       url))))
+    (write-region str nil filename)
+    (when (file-exists-p filename)
+      (find-file filename))))
+(defun km-browse-f-change-ext (file new-ext)
+  "Replace extension of FILE with NEW-EXT."
+  (concat (file-name-sans-extension file) "." new-ext))
+
+;;;###autoload
+(defun km-browse-download-file (&optional url directory download-name)
+  "Download file at URL into DIRECTORY under DOWNLOAD-NAME."
+  (interactive (list (km-browse-read-url)
+                     (read-directory-name "Download to ")))
+  (require 'url)
+  (let* ((name
+          (or download-name (km-browse-url-to-download-base-name
+                             url)))
+         (exts (seq-uniq (delete nil
+                                 (list (file-name-extension url)
+                                       (when download-name
+                                         (file-name-extension download-name))
+                                       "html"
+                                       "org"))))
+         (filename (if (file-name-absolute-p name)
+                       name
+                     (expand-file-name name directory))))
+    (setq filename
+          (completing-read
+           "Save as\s"
+           (mapcar
+            (apply-partially #'km-browse-f-change-ext filename)
+            (reverse exts))))
+    (if (equal (file-name-extension filename) "org")
+        (km-browse-download-as-org url filename)
+      (when-let ((download-buffer (url-retrieve-synchronously url)))
+        (setq filename
+              (completing-read
+               "Save as\s"
+               (mapcar
+                (apply-partially #'km-browse-f-change-ext filename) exts)))
+        (with-current-buffer download-buffer
+          (set-buffer download-buffer)
+          (goto-char (point-min))
+          (re-search-forward "^$" nil 'move)
+          (forward-char)
+          (delete-region (point-min)
+                         (point))
+          (write-file filename))))
+    (when (file-exists-p filename)
+      (find-file filename))))
 
 ;;;###autoload
 (defun km-browse-open-current-file-in-browser (&optional filename _new-session)
@@ -1215,7 +1308,7 @@ filename at point in `dired'."
   (interactive)
   (require 'browse-url)
   (let ((url (or filename
-                 (pcase (seq-find 'derived-mode-p '(dired-mode org-mode))
+                 (pcase (seq-find #'derived-mode-p '(dired-mode org-mode))
                    ('dired-mode
                     (when (and (fboundp 'dired-get-marked-files)
                                (fboundp 'dired-file-name-at-point))
