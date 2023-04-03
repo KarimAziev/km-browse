@@ -1260,7 +1260,7 @@ Default action is `km-browse-action-default'."
 ;;;###autoload
 (defun km-browse-download-file (&optional url directory download-name)
   "Download file at URL into DIRECTORY under DOWNLOAD-NAME."
-  (interactive (list (km-browse-read-url)
+  (interactive (list (km-browse-read-url "Download url: ")
                      (read-directory-name "Download to ")))
   (require 'url)
   (let* ((name
