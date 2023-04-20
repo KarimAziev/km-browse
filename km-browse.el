@@ -1059,13 +1059,13 @@ Default action is `km-browse-action-default'."
   (interactive)
   (let ((url
          (km-browse-completing-read
-          "Bookmarks"
-          (km-browse-read-chrome-bookmarks))))
+          "Bookmarks: "
+          (km-browse-read-chrome-bookmarks)
+          'km-browse-annotate)))
     (funcall (or action (if (called-interactively-p 'any)
                             'km-browse-action-default
                           'identity))
              (km-browse-format-to-url url))))
-
 
 ;;;###autoload
 (defun km-browse-chrome-other (&optional action)
@@ -1107,7 +1107,7 @@ Default action is `km-browse-action-default'."
   (delete-dups (append (km-browse-urls-from-kill-ring)
                        (km-browse-urls-from-buffer))))
 
-(defcustom km-browse-url-sources '(("Chrome Bookmarks" .
+(defcustom km-browse-url-sources '(("Chrome Bookmarks " .
                                     km-browse-read-chrome-bookmarks)
                                    ("Chrome History"
                                     .
@@ -1144,8 +1144,9 @@ Default action is `km-browse-action-default'."
             (km-browse-multi-source-read
              (append (mapcar (lambda (it)
                                `(,(car it) km-browse-completing-read
-                                 ,(car
-                                   it)
+                                 ,(format "%s: "
+                                          (car
+                                           it))
                                  ,(cdr it)))
                              km-browse-url-sources)
                      (list "Other" 'km-browse-chrome-other))))))
