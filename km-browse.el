@@ -1258,48 +1258,74 @@ Default action is `km-browse-action-default'."
   "Replace extension of FILE with NEW-EXT."
   (concat (file-name-sans-extension file) "." new-ext))
 
+(defun km-browse-download-url (url)
+  "Download URL and return string."
+  (let ((download-buffer (url-retrieve-synchronously url)))
+    (prog1
+        (with-temp-buffer
+          (insert
+           (with-current-buffer download-buffer
+             (set-buffer download-buffer)
+             (goto-char (point-min))
+             (re-search-forward "\r?\n\r?\n")
+             (delete-region (point-min)
+                            (point))
+             (buffer-string)))
+          (decode-coding-region (point-min)
+                                (point-max) 'dos)
+          (buffer-string))
+      (kill-buffer download-buffer))))
+
+(defun km-browse-download-url-to-file (url file)
+  "Download URL to FILE."
+  (with-current-buffer (url-retrieve-synchronously url)
+    (goto-char (point-min))
+    (re-search-forward "\r?\n\r?\n")
+    (let ((coding-system-for-write 'no-conversion))
+      (write-region (point)
+                    (point-max) file
+                    nil
+                    'silent)
+      file)))
+
+(defun km-browse-pandoc-from-string (string input-type output-type &rest
+                                            options)
+  "Execute `pandoc' on STRING in INPUT-TYPE to OUTPUT-TYPE additional OPTIONS."
+  (setq options (delete nil (flatten-list options)))
+  (let ((args (append
+               (list (executable-find "pandoc") t t nil)
+               (list "-f" input-type "-t" output-type) options)))
+    (with-temp-buffer
+      (insert string)
+      (if
+          (eq 0 (apply #'call-process-region (append (list (point-min)
+                                                           (point-max))
+                                                     args)))
+          (buffer-string)
+        (minibuffer-message "Pandoc error: %s"
+                            (buffer-string))
+        nil))))
+
 ;;;###autoload
 (defun km-browse-download-file (&optional url directory download-name)
   "Download file at URL into DIRECTORY under DOWNLOAD-NAME."
-  (interactive (list (km-browse-read-url "Download url: ")
-                     (read-directory-name "Download to ")))
+  (interactive (list (km-browse-read-url "Download url: ")))
   (require 'url)
-  (let* ((name
-          (or download-name (km-browse-url-to-download-base-name
-                             url)))
-         (exts (seq-uniq (delete nil
-                                 (list (file-name-extension url)
-                                       (when download-name
-                                         (file-name-extension download-name))
-                                       "html"
-                                       "org"))))
-         (filename (if (file-name-absolute-p name)
-                       name
-                     (expand-file-name name directory))))
-    (setq filename
-          (completing-read
-           "Save as\s"
-           (mapcar
-            (apply-partially #'km-browse-f-change-ext filename)
-            (reverse exts))))
-    (if (equal (file-name-extension filename) "org")
-        (km-browse-download-as-org url filename)
-      (when-let ((download-buffer (url-retrieve-synchronously url)))
-        (setq filename
-              (completing-read
-               "Save as\s"
-               (mapcar
-                (apply-partially #'km-browse-f-change-ext filename) exts)))
-        (with-current-buffer download-buffer
-          (set-buffer download-buffer)
-          (goto-char (point-min))
-          (re-search-forward "^$" nil 'move)
-          (forward-char)
-          (delete-region (point-min)
-                         (point))
-          (write-file filename))))
+  (let* ((content (km-browse-download-url url))
+         (filename (expand-file-name
+                    (or download-name (read-string "Save as "
+                                                   (km-browse-url-to-download-base-name
+                                                    url)))
+                    (or directory (read-directory-name "Save to: ")))))
+    (write-region (if (equal (file-name-extension filename) "org")
+                      (km-browse-pandoc-from-string content "html" "org")
+                    content)
+                  nil filename
+                  nil
+                  'silent)
     (when (file-exists-p filename)
       (find-file filename))))
+
 
 ;;;###autoload
 (defun km-browse-open-current-file-in-browser (&optional filename _new-session)
