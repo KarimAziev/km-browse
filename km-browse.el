@@ -851,27 +851,29 @@ If windows doesn't exists, split current window."
   (require 'xwidget)
   (if (active-minibuffer-window)
       (with-selected-window (selected-window)
-        (km-browse-xwidget-in-other-window 'km-browse-with-xwidget-or-fallback-browse url))
-    (km-browse-xwidget-in-other-window 'km-browse-with-xwidget-or-fallback-browse url)))
+        (km-browse-xwidget-in-other-window
+         #'km-browse-with-xwidget-or-fallback-browse url))
+    (km-browse-xwidget-in-other-window
+     #'km-browse-with-xwidget-or-fallback-browse url)))
 
 
 ;;;###autoload
 (defun km-browse-chrome-xwidget-and-exit ()
   "Exit minibuffer and `km-browse-xwidget-browse'."
   (interactive)
-  (km-browse-chrome-exit-with-action 'km-browse-xwidget-browse))
+  (km-browse-chrome-exit-with-action #'km-browse-xwidget-browse))
 
 ;;;###autoload
 (defun km-browse-chrome-pdf-and-exit ()
   "Exit minibuffer and `km-browse-action-pdf'."
   (interactive)
-  (km-browse-chrome-exit-with-action 'km-browse-action-pdf))
+  (km-browse-chrome-exit-with-action #'km-browse-action-pdf))
 
 ;;;###autoload
 (defun km-browse-chrome-localhost-and-exit ()
   "Exit minibuffer and `km-browse-localhost'."
   (interactive)
-  (km-browse-chrome-exit-with-action 'km-browse-localhost))
+  (km-browse-chrome-exit-with-action #'km-browse-localhost))
 
 
 
@@ -943,7 +945,7 @@ Default value of SEPARATOR is space."
 (defun km-browse-insert ()
   "Insert current url and exit minibuffer."
   (interactive)
-  (km-browse-chrome-exit-with-action 'km-browse-insert-action))
+  (km-browse-chrome-exit-with-action #'km-browse-insert-action))
 
 
 ;;;###autoload
@@ -961,7 +963,7 @@ Default value of SEPARATOR is space."
 (defun km-browse-chrome-xwidget-no-exit ()
   "Preview current minibuffer url without exiting minibuffer."
   (interactive)
-  (km-browse-chrome-action-no-exit 'km-browse-xwidget-browse))
+  (km-browse-chrome-action-no-exit #'km-browse-xwidget-browse))
 
 (defvar km-browse-actions-map
   (let ((map (make-sparse-keymap)))
@@ -1033,7 +1035,12 @@ Default action is `km-browse-action-default'."
                               nil nil
                               (or
                                (km-browse-get-region)
-                               (thing-at-point 'url))))))
+                               (when (and (bound-and-true-p iedit-mode)
+                                          (fboundp
+                                           'iedit-current-occurrence-string))
+                                 (iedit-current-occurrence-string))
+                               (thing-at-point 'url)
+                               (thing-at-point 'word t))))))
       url)))
 
 
@@ -1254,6 +1261,7 @@ Default action is `km-browse-action-default'."
     (write-region str nil filename)
     (when (file-exists-p filename)
       (find-file filename))))
+
 (defun km-browse-f-change-ext (file new-ext)
   "Replace extension of FILE with NEW-EXT."
   (concat (file-name-sans-extension file) "." new-ext))
