@@ -260,22 +260,6 @@ Allowed forms for SOURCES are
        ,(substitute-in-file-name
          "$USERPROFILE/Local Settings/Application Data/Google/Chrome/User Data/Default/History"))))))
 
-(defun km-browse-read-port (prompt alist)
-  "Read open ports ALIST with PROMPT.
-ALIST should be an alist of port string and corresponding services."
-  (let* ((annotf (lambda (str)
-                   (propertize (format " %s" (cdr (assoc str alist)))
-                               'face 'font-lock-preprocessor-face)))
-         (value
-          (completing-read prompt
-                           (lambda (str pred action)
-                             (if (eq action 'metadata)
-                                 `(metadata
-                                   (annotation-function . ,annotf))
-                               (complete-with-action action alist str pred))))))
-    (if (consp value)
-        value
-      (assoc value alist))))
 
 (defun km-browse-open-ports (&optional service)
   "Return alist of open ports and services with `nmap' program.
@@ -433,22 +417,6 @@ Return stdout output if command existed with zero status, nil otherwise."
                                              (url-attributes url-struct)
                                              (url-fullness url-struct)))))
 
-(defun km-browse-change-localhost-port (localhost-str)
-  "Change port in LOCALHOST-STR to currently open port.
-If a several open ports found, read it with comletion.
-LOCALHOST-STR should match \"localhost:\"."
-  (let* ((ports
-          (seq-filter
-           (lambda (it)
-             (and (= (length it) 4)
-                  (not (member it '("irc")))))
-           (km-browse-open-ports)))
-         (p (if (> (length ports) 1)
-                (car (km-browse-read-port "Port " ports))
-              (or (caar ports)
-                  (read-string "Port:\s")))))
-    (replace-regexp-in-string "localhost:\\([0-9]+\\)"
-                              p localhost-str nil nil 1)))
 
 (defun km-browse-format-to-google-search (string)
   "Return url with URI-encoded STRING to search in google."
@@ -538,6 +506,41 @@ or `km-browse-chrome-history-hash'."
       (gethash key km-browse-eww-bookmarks-hash)
       (gethash key km-browse-chrome-history-hash)))
 
+
+(defun km-browse-change-localhost-port (localhost-str)
+  "Change port in LOCALHOST-STR to currently open port.
+If a several open ports found, read it with comletion.
+LOCALHOST-STR should match \"localhost:\"."
+  (unless (string-match-p "^https?://" localhost-str)
+    (setq localhost-str (concat "http://" localhost-str)))
+  (let* ((ports (km-browse-get-nodejs-open-ports))
+         (alist (append
+                 (list (cons (km-browse-url-to-localhost
+                              localhost-str)
+                             "(Exact)"))
+                 (mapcar (lambda (p)
+                           (cons
+                            (km-browse-url-to-localhost
+                             localhost-str
+                             p)
+                            "(Active)"))
+                         ports)))
+         (annotf
+          (lambda (str)
+            (format " %s"
+                    (cdr
+                     (assoc
+                      str
+                      alist))))))
+    (completing-read "Browse: "
+                     (lambda (str pred action)
+                       (if (eq action 'metadata)
+                           `(metadata
+                             (annotation-function .
+                                                  ,annotf))
+                         (complete-with-action
+                          action alist str pred))))))
+
 (defun km-browse-format-to-url (string)
   "If STRING is valid url return it otherwise format to google search url."
   (let ((result (if (and (not (km-browse-web-url-p string))
@@ -592,21 +595,17 @@ or `km-browse-chrome-history-hash'."
 
 (defun km-browse-get-nodejs-open-ports ()
   "Return list of integers which are open ports for nodejs program."
-  (let ((founds
-         (seq-filter
-          (lambda (it)
-            (and (string-match-p "^node[\s\t]" it)
-                 (string-match-p "[*]:\\([0-9]+\\)[\s\t][(]LISTEN[)]" it)))
-          (split-string (km-browse-call-process "lsof" "-i" "tcp") "\n" t))))
-    (seq-uniq (mapcar (lambda (it)
-                        (with-temp-buffer
-                          (erase-buffer)
-                          (insert it)
-                          (re-search-backward
-                           "[*]:\\([0-9]+\\)[\s\t][(]LISTEN[)]" nil
-                           t 1)
-                          (string-to-number (match-string-no-properties 1))))
-                      founds))))
+  (mapcar (lambda (it)
+            (when-let ((local-addr (seq-find (apply-partially 'string-match-p
+                                                              ":[0-9]+")
+                                             (split-string it "[\s\t]" t))))
+              (string-to-number (car (last (split-string local-addr ":" t))))))
+          (seq-filter
+           (lambda (it)
+             (and (string-match-p "\\_<\\([0-9]+/node\\)\\_>" it)))
+           (split-string (km-browse-call-process "netstat"
+                                                 "-tlnp")
+                         "\n" t))))
 
 (defun km-browse-localhost (url)
   "Replace host in URL to localhost and browse it."
