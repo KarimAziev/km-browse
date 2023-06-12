@@ -550,15 +550,17 @@ LOCALHOST-STR should match \"localhost:\"."
                          string)
                         ((string-match-p "^git@" string)
                          string)
-                        ((string-match-p "localhost:" string)
-                         (km-browse-change-localhost-port string))
+                        ((string-match-p "^\\(http://\\)?localhost:" string)
+                         (if (ignore-errors (url-http-file-exists-p string))
+                             string
+                           (km-browse-change-localhost-port string)))
                         ((and (not (string-empty-p string))
                               (file-exists-p string))
                          (concat "file://" string))
                         ((string-match-p "^https?://" string)
                          string)
                         (t
-                         (let ((url (if (string-match-p "^https://" string)
+                         (let ((url (if (string-match-p "^https?://" string)
                                         string
                                       (concat "https://" string)))
                                (exist))
