@@ -7,6 +7,7 @@
 ;; Version: 0.1.0
 ;; Keywords: hypermedia
 ;; Package-Requires: ((emacs "28.1"))
+;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -59,9 +60,9 @@
          -1))
 (defvar km-browse-multi-source-minibuffer-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C->") 'km-browse-multi-source-select-next)
-    (define-key map (kbd "C-<") 'km-browse-multi-source-select-prev)
-    (define-key map (kbd "C-.") 'km-browse-multi-source-read-source)
+    (define-key map (kbd "C->") #'km-browse-multi-source-select-next)
+    (define-key map (kbd "C-<") #'km-browse-multi-source-select-prev)
+    (define-key map (kbd "C-.") #'km-browse-multi-source-read-source)
     map)
   "Keymap to use in minibuffer.")
 
@@ -449,6 +450,27 @@ Return stdout output if command existed with zero status, nil otherwise."
     (puthash hash-key pl km-browse-chrome-history-hash)
     url))
 
+(defun km-browse-group-urls (urls)
+  "Group URLS by url type and host."
+  (seq-group-by (lambda (it)
+                  (let ((obj (url-generic-parse-url it)))
+                    (concat (url-type obj)
+                            "://"
+                            (url-host obj))))
+                (copy-tree urls)))
+(defun km-browse-all-urls ()
+  "Return all known urls."
+  (seq-uniq
+   (append
+    (km-browse-urls-from-buffer-and-kill-ring)
+    (km-browse-read-chrome-bookmarks)
+    (km-browse-chrome-session-dump-get-active-tabs)
+    (km-browse-init-chrome-history-candidates))))
+
+(defun km-browse-all-urls-groupped-alist ()
+  "Return all known urls urls groupped by url type and hostname."
+  (km-browse-group-urls
+   (km-browse-all-urls)))
 
 
 (defun km-browse-read-chrome-history ()
@@ -598,7 +620,7 @@ LOCALHOST-STR should match \"localhost:\"."
 (defun km-browse-get-nodejs-open-ports ()
   "Return list of integers which are open ports for nodejs program."
   (mapcar (lambda (it)
-            (when-let ((local-addr (seq-find (apply-partially 'string-match-p
+            (when-let ((local-addr (seq-find (apply-partially #'string-match-p
                                                               ":[0-9]+")
                                              (split-string it "[\s\t]" t))))
               (string-to-number (car (last (split-string local-addr ":" t))))))
@@ -730,8 +752,9 @@ their own target finder.  See for example
   "Call ACTION with current candidate and exit minibuffer."
   (pcase-let ((`(,_category . ,current)
                (km-browse-chrome-get-current-candidate)))
-    (progn (run-with-timer 0.1 nil action current)
-           (abort-minibuffers))))
+    (progn
+      (run-with-timer 0 nil action current)
+      (abort-minibuffers))))
 
 (defun km-browse-web-restore-completions-wind ()
   "Restore *Completions* window height."
@@ -1115,21 +1138,15 @@ Default action is `km-browse-action-default'."
   (delete-dups (append (km-browse-urls-from-kill-ring)
                        (km-browse-urls-from-buffer))))
 
-(defcustom km-browse-url-sources '(("Chrome Bookmarks " .
-                                    km-browse-read-chrome-bookmarks)
-                                   ("Chrome History"
-                                    .
-                                    km-browse-init-chrome-history-candidates)
-                                   ("Buffer and kill ring urls"
-                                    .
-                                    km-browse-urls-from-buffer-and-kill-ring)
-                                   ("All"
-                                    .
-                                    (lambda ()
-                                      (append
-                                       (km-browse-read-chrome-bookmarks)
-                                       (km-browse-urls-from-buffer-and-kill-ring)
-                                       (km-browse-init-chrome-history-candidates)))))
+(defcustom km-browse-url-sources
+  '(("All" . km-browse-all-urls)
+    ("Chrome Bookmarks " . km-browse-read-chrome-bookmarks)
+    ("Chrome History" . km-browse-init-chrome-history-candidates)
+    ("Buffer and kill ring urls" . km-browse-urls-from-buffer-and-kill-ring)
+    ("Hosts" .
+     (lambda ()
+       (mapcar #'car
+               (km-browse-all-urls-groupped-alist)))))
   "Alist of source names and either list of urls or functions.
 If value of cons is function, it will be called without arguments and
 should return list of urls."
@@ -1159,6 +1176,30 @@ Default action is `km-browse-action-default'."
                              km-browse-url-sources)
                      (list "Other" 'km-browse-chrome-other))))))
 
+;;;###autoload
+(defun km-browse-groupped (&optional action)
+  "Read chrome bookmarks in minibuffer and perform ACTION.
+Default action is `km-browse-action-default'."
+  (interactive)
+  (funcall (or action 'km-browse-action-default)
+           (km-browse-format-to-url
+            (let* ((alist
+                    (km-browse-all-urls-groupped-alist))
+                   (annotf (lambda (str)
+                             (format " (%s)" (length (cdr (assoc str alist))))))
+                   (group
+                    (km-browse-completing-read "Candidates: "
+                                               (mapcar #'car alist)
+                                               annotf))
+                   (cell
+                    (assoc-string group alist)))
+              (when cell (setq cell
+                               (seq-uniq cell)))
+              (if (= 1 (length cell))
+                  (car cell)
+                (km-browse-completing-read (format "Url:  %s" group)
+                                           cell))))))
+
 (defvar browse-url--browser-defcustom-type)
 
 (defun km-browse-url-get-functions-alist ()
@@ -1166,9 +1207,10 @@ Default action is `km-browse-action-default'."
   (require 'browse-url)
   (let ((choices (delete nil
                          (mapcar (lambda (it)
-                                   (when-let* ((pl (when (eq (car it)
-                                                             'function-item)
-                                                     (cdr it)))
+                                   (when-let* ((pl
+                                                (when (eq (car it)
+                                                          'function-item)
+                                                  (cdr it)))
                                                (tag (plist-get pl :tag))
                                                (value (plist-get pl :value)))
                                      (when (fboundp value)
@@ -1177,8 +1219,10 @@ Default action is `km-browse-action-default'."
                                        browse-url--browser-defcustom-type))))))
     (when (executable-find "xdg-open")
       (push '("XDG open" . km-browse-xdg-open) choices))
-    (when (fboundp 'xwidget-webkit-browse-url)
-      (push '("X widget" . km-browse-xwidget-browse) choices))))
+    (when (and (fboundp 'xwidget-webkit-browse-url)
+               (not (derived-mode-p 'xwidget-webkit-mode)))
+      (push '("X widget" . km-browse-xwidget-browse) choices))
+    choices))
 
 (defun km-browse-prompt-browser ()
   "Read a function for browse url with completion."
@@ -1191,8 +1235,11 @@ Default action is `km-browse-action-default'."
 
 (defun km-browse-open-current-file-in-browser-0 (&optional url program)
   "Call PROGRAM with URL."
-  (if (and (file-exists-p url)
-           (not (eq url 'km-browse-xdg-open)))
+  (if (and
+       url
+       (not (string-prefix-p "file:/" url))
+       (file-exists-p url)
+       (not (eq program 'km-browse-xdg-open)))
       (funcall program (concat "file:///" url))
     (funcall program url)))
 
@@ -1241,6 +1288,7 @@ Default action is `km-browse-action-default'."
   (km-browse-completing-read
    (or prompt "Url\s")
    (km-browse-url-get-all-urls)))
+
 
 (defun km-browse-url-to-download-base-name (url)
   "Convert URL to download name without extension."
@@ -1342,9 +1390,11 @@ Default action is `km-browse-action-default'."
 Default value of FILENAME is current buffer file name or
 filename at point in `dired'."
   (interactive)
+  (require 'xwidget)
   (require 'browse-url)
   (let ((url (or filename
-                 (pcase (seq-find #'derived-mode-p '(dired-mode org-mode))
+                 (pcase (seq-find #'derived-mode-p '(dired-mode org-mode
+                                                                xwidget-webkit-mode))
                    ('dired-mode
                     (when (and (fboundp 'dired-get-marked-files)
                                (fboundp 'dired-file-name-at-point))
@@ -1354,13 +1404,17 @@ filename at point in `dired'."
                                                         (eq (car-safe it) :uri))
                                                       (text-properties-at
                                                        (point))))))
+                   ('xwidget-webkit-mode
+                    (when-let ((sess
+                                (when (fboundp 'xwidget-webkit-current-session)
+                                  (xwidget-webkit-current-session))))
+                      (xwidget-webkit-uri sess)))
                    (_ buffer-file-name))))
         (fn (km-browse-prompt-browser)))
-    (when (listp url)
-      (setq url (delete nil url)))
     (if (listp url)
-        (dolist (it url)
-          (km-browse-open-current-file-in-browser-0 it fn))
+        (dolist (u url)
+          (when u
+            (km-browse-open-current-file-in-browser-0 u fn)))
       (km-browse-open-current-file-in-browser-0 url fn))))
 
 (provide 'km-browse)
