@@ -39,8 +39,9 @@
   :type 'url
   :group 'km-browse)
 
+
 (defvar km-browse-url-re
-  "\\(\\(http[s]?://\\|git@\\|file:/~?+\\)*\\(www\\.\\)?\\([a-z-0-9]+\\(\\(:[0-9]*\\)\\|\\.[a-z]+\\)+/?[a-z]?[^;\s\t\n\r\f|\\]]*[a-z-0-9]+\\)\\)"
+  "\\(\\(http[s]?://\\|git@\\|file:/~*\\)*\\(www\\.\\)?\\([a-z0-9-]+\\(\\(:[0-9]*\\)\\|\\.[a-z]+\\)+/?[a-z]?[^;\s\t\n\r\f|\\]]*[a-z0-9-]+\\)\\)"
   "Url regexp.")
 
 (defvar km-browse-chrome-history-file nil
@@ -54,7 +55,7 @@
 
 ;;;###autoload
 (defun km-browse-multi-source-select-prev ()
-  "Throw to the catch tag ='next with -1."
+  "Select the previous item in a multi-source browser."
   (interactive)
   (throw 'next
          -1))
@@ -89,7 +90,7 @@
 
 ;;;###autoload
 (defun km-browse-multi-source-read-source ()
-  "Throw to the catch tag ='next with -1."
+  "Prompt for a source and calculate its relative position."
   (interactive)
   (let* ((source-label
           (completing-read "Source: "
@@ -226,7 +227,7 @@ Allowed forms for SOURCES are
     curr))
 
 (defun km-browse-chrome-guess-config-file ()
-  "Return the most newer chrome history file."
+  "Guess the newest Chrome config file path."
   (car
    (seq-sort
     #'file-newer-than-file-p
@@ -244,7 +245,7 @@ Allowed forms for SOURCES are
          "$USERPROFILE/Local Settings/Application Data/Google/Chrome/"))))))
 
 (defun km-browse-chrome-guess-history-file ()
-  "Return the most newer chrome history file."
+  "Guess and return the newest Chrome history file path."
   (car
    (seq-sort
     #'file-newer-than-file-p
@@ -426,7 +427,7 @@ Return stdout output if command existed with zero status, nil otherwise."
   "Check if STR is url, possible without protocol."
   (and str
        (not (string-match-p "[\s\t\n;]\\|\\\\[(]" str))
-       (string-match-p "^[a-z-0-9]" str)
+       (string-match-p "^[a-z0-9-]" str)
        (if-let ((m (string-match-p "http[s]?:" str)))
            (equal m 0)
          t)
@@ -1070,8 +1071,11 @@ Default action is `km-browse-action-default'."
 
 ;;;###autoload
 (defun km-browse-chrome-history (&optional action)
-  "Read chrome bookmarks in minibuffer and perform ACTION.
-Default action is `km-browse-action-default'."
+  "Open a URL from Chrome history.
+
+Optional argument ACTION is a function to call with the URL selected from the
+Chrome history. If not provided, it defaults to `km-browse-action-default' when
+called interactively, or `identity' otherwise."
   (interactive)
   (let ((url
          (km-browse-completing-read
@@ -1085,8 +1089,9 @@ Default action is `km-browse-action-default'."
 
 ;;;###autoload
 (defun km-browse-chrome-bookmarks (&optional action)
-  "Read chrome bookmarks in minibuffer and perform ACTION.
-Default action is `km-browse-action-default'."
+  "Open a Chrome bookmark URL.
+
+Optional argument ACTION is a function to call with the selected URL."
   (interactive)
   (let ((url
          (km-browse-completing-read
@@ -1100,8 +1105,10 @@ Default action is `km-browse-action-default'."
 
 ;;;###autoload
 (defun km-browse-chrome-other (&optional action)
-  "Read chrome bookmarks in minibuffer and perform ACTION.
-Default action is `km-browse-action-default'."
+  "Open a URL in a non-default browser.
+
+Optional argument ACTION is a function to call with the URL. If not provided,
+`km-browse-action-default' is used as the default function."
   (interactive)
   (let ((url
          (minibuffer-with-setup-hook
@@ -1114,7 +1121,7 @@ Default action is `km-browse-action-default'."
     (funcall (or action 'km-browse-action-default) url)))
 
 (defun km-browse-urls-from-kill-ring ()
-  "Seearch for urls in current buffer."
+  "Collect URLs found in the kill ring."
   (with-temp-buffer
     (insert (mapconcat (lambda (str)
                          (substring-no-properties str 0))
@@ -1122,12 +1129,38 @@ Default action is `km-browse-action-default'."
     (km-browse-urls-from-buffer)))
 
 (defun km-browse-urls-from-buffer ()
-  "Seearch for urls in current buffer."
-  (let ((links))
+  "Collect URLs found in the current buffer."
+  (let ((links)
+        (re  (rx (group
+                  (group
+                   (or (group "http"
+                              (opt "s")
+                              "://"
+                              (opt (group "www.")))
+                       "git@"
+                       (seq "file:/"
+                            (zero-or-more "~"))))
+                  (group
+                   (one-or-more
+                    (any "0-9a-z" "-"))
+                   (one-or-more
+                    (group
+                     (or (group ":"
+                                (zero-or-more
+                                 (any "0-9")))
+                         (seq "."
+                              (one-or-more
+                               (any "0-9a-z"))))))
+                   (opt "/")
+                   (any "a-z")
+                   (zero-or-more
+                    (not (any "\t\n\f\r ;|")))
+                   (one-or-more
+                    (any "0-9a-z" "-")))))))
     (save-excursion
       (goto-char (point-min))
       (while (re-search-forward
-              "\\(\\(\\(http[s]?://\\(www\\.\\)?\\)\\|git@\\|file:/~?+\\)\\([a-z-0-9]+\\(\\(:[0-9]*\\)\\|\\.[a-z]+\\)+/?[a-z]?[^\];\s\t\n\r\f|]*[a-z-0-9]+\\)\\)"
+              re
               nil t 1)
         (push (match-string-no-properties 0)
               links))
@@ -1161,8 +1194,9 @@ should return list of urls."
 
 ;;;###autoload
 (defun km-browse-from-all-sources (&optional action)
-  "Read chrome bookmarks in minibuffer and perform ACTION.
-Default action is `km-browse-action-default'."
+  "Browse URLs or search from multiple sources.
+
+Optional argument ACTION is a function to be called with the URL."
   (interactive)
   (funcall (or action 'km-browse-action-default)
            (km-browse-format-to-url
@@ -1178,8 +1212,10 @@ Default action is `km-browse-action-default'."
 
 ;;;###autoload
 (defun km-browse-groupped (&optional action)
-  "Read chrome bookmarks in minibuffer and perform ACTION.
-Default action is `km-browse-action-default'."
+  "Open a grouped URL or search query.
+
+Optional argument ACTION is a function to call with the selected URL. If nil,
+`km-browse-action-default' is used as the default action."
   (interactive)
   (funcall (or action 'km-browse-action-default)
            (km-browse-format-to-url
