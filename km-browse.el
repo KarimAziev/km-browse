@@ -1198,17 +1198,19 @@ should return list of urls."
 
 Optional argument ACTION is a function to be called with the URL."
   (interactive)
-  (funcall (or action 'km-browse-action-default)
+  (funcall (or action #'km-browse-action-default)
            (km-browse-format-to-url
             (km-browse-multi-source-read
              (append (mapcar (lambda (it)
                                `(,(car it) km-browse-completing-read
                                  ,(format "%s: "
-                                          (car
-                                           it))
+                                   (car
+                                    it))
                                  ,(cdr it)))
                              km-browse-url-sources)
-                     (list "Other" 'km-browse-chrome-other))))))
+                     (list
+                      (list "Other" #'km-browse-chrome-other
+                            #'identity)))))))
 
 ;;;###autoload
 (defun km-browse-groupped (&optional action)
