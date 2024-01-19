@@ -52,6 +52,7 @@
 (defvar km-browse-eww-bookmarks-hash (make-hash-table :test 'equal))
 (defvar km-browse-chrome-history-hash (make-hash-table :test 'equal))
 
+(defvar km-browse-minibuffer-history nil)
 
 ;;;###autoload
 (defun km-browse-multi-source-select-prev ()
@@ -1055,9 +1056,9 @@ If nil, `km-browse-action-default' is used by default."
                                 (if (eq action 'metadata)
                                     `(metadata
                                       (annotation-function .
-                                                           ,(if annotate-fn
-                                                                annotate-fn
-                                                              'km-browse-annotate))
+                                       ,(if annotate-fn
+                                            annotate-fn
+                                          'km-browse-annotate))
                                       (category . url))
                                   (complete-with-action action collection str
                                                         pred)))
@@ -1069,7 +1070,8 @@ If nil, `km-browse-action-default' is used by default."
                                            'iedit-current-occurrence-string))
                                  (iedit-current-occurrence-string))
                                (thing-at-point 'url)
-                               (thing-at-point 'word t))))))
+                               (thing-at-point 'word t))
+                              'km-browse-minibuffer-history))))
       url)))
 
 
@@ -1121,8 +1123,8 @@ Optional argument ACTION is a function to call with the URL. If not provided,
                  (let ((map (make-composed-keymap km-browse-actions-map
                                                   (current-local-map))))
                    (use-local-map map))))
-           (browse-url (read-string "Other url: ")))))
-    (funcall (or action 'km-browse-action-default) url)))
+           (read-string "Other URL: "))))
+    (funcall (or action #'km-browse-action-default) url)))
 
 (defun km-browse-urls-from-kill-ring ()
   "Collect URLs found in the kill ring."
@@ -1223,7 +1225,7 @@ Optional argument ACTION is a function to be called with the URL."
 Optional argument ACTION is a function to call with the selected URL. If nil,
 `km-browse-action-default' is used as the default action."
   (interactive)
-  (funcall (or action 'km-browse-action-default)
+  (funcall (or action #'km-browse-action-default)
            (km-browse-format-to-url
             (let* ((alist
                     (km-browse-all-urls-groupped-alist))
