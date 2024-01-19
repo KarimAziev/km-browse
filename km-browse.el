@@ -1004,8 +1004,11 @@ Default value of SEPARATOR is space."
 
 ;;;###autoload
 (defun km-browse-chrome-browse-new (&optional action)
-  "Abort the current minibuffer if any, read url and perfom ACTION.
-Default action is `km-browse-action-default'."
+  "Execute ACTION (default to `km-browse-action-default') on the minibuffer text.
+
+If there are no minibuffer input, or it is empty, read it in in minibuffer.
+
+If nil, `km-browse-action-default' is used by default."
   (interactive)
   (if (active-minibuffer-window)
       (pcase-let ((`(,_category . ,current)
@@ -1013,13 +1016,17 @@ Default action is `km-browse-action-default'."
                   (text (buffer-substring-no-properties (minibuffer-prompt-end)
                                                         (line-end-position))))
         (progn (run-with-timer 0.1 nil
-                               (lambda (url)
-                                 (funcall #'km-browse-action-default
-                                          (read-string "Browse: "
-                                                       (and url
-                                                            (km-browse-format-to-url
-                                                             url)))))
-                               (or text current))
+                               (lambda (str)
+                                 (let ((url
+                                        (km-browse-format-to-url
+                                         (or str
+                                             (read-string
+                                              "Browse: ")))))
+                                   (funcall #'km-browse-action-default
+                                            url)))
+                               (if (string-empty-p text)
+                                   current
+                                 text))
                (abort-minibuffers)))
     (let ((url
            (minibuffer-with-setup-hook
