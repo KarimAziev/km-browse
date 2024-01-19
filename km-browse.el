@@ -566,46 +566,45 @@ LOCALHOST-STR should match \"localhost:\"."
 
 (defun km-browse-format-to-url (string)
   "If STRING is valid url return it otherwise format to google search url."
-  (let ((result (if (and (not (km-browse-web-url-p string))
-                         (not (file-exists-p string)))
-                    (km-browse-format-to-google-search string)
-                  (cond ((string-match-p "^\\(file|chrome\\):/" string)
-                         string)
-                        ((string-match-p "^git@" string)
-                         string)
-                        ((string-match-p "^\\(http://\\)?localhost:" string)
-                         (if (ignore-errors (url-http-file-exists-p string))
-                             string
-                           (km-browse-change-localhost-port string)))
-                        ((and (not (string-empty-p string))
-                              (file-exists-p string))
-                         (concat "file://" string))
-                        ((string-match-p "^https?://" string)
-                         string)
-                        (t
-                         (let ((url (if (string-match-p "^https?://" string)
-                                        string
-                                      (concat "https://" string)))
-                               (exist))
-                           (condition-case
-                               nil
-                               (setq exist
-                                     (url-http-file-exists-p
-                                      (with-temp-buffer
-                                        (erase-buffer)
-                                        (insert url)
-                                        (goto-char (point-min))
-                                        (re-search-forward "://" nil t 1)
-                                        (re-search-forward "/" nil t 1)
-                                        (backward-char 1)
-                                        (let ((end (point)))
-                                          (skip-chars-backward "^[\s\t\n]")
-                                          (buffer-substring-no-properties
-                                           (point) end)))))
-                             (error (setq exist nil)))
-                           (if exist url (km-browse-format-to-google-search
-                                          string))))))))
-    result))
+  (if (and (not (km-browse-web-url-p string))
+           (not (file-exists-p string)))
+      (km-browse-format-to-google-search string)
+    (cond ((string-match-p "^\\(file|chrome\\):/" string)
+           string)
+          ((string-match-p "^git@" string)
+           string)
+          ((string-match-p "^\\(http://\\)?localhost:" string)
+           (if (ignore-errors (url-http-file-exists-p string))
+               string
+             (km-browse-change-localhost-port string)))
+          ((and (not (string-empty-p string))
+                (file-exists-p string))
+           (concat "file://" string))
+          ((string-match-p "^https?://" string)
+           string)
+          (t
+           (let ((url (if (string-match-p "^https?://" string)
+                          string
+                        (concat "https://" string)))
+                 (exist))
+             (condition-case
+                 nil
+                 (setq exist
+                       (url-http-file-exists-p
+                        (with-temp-buffer
+                          (erase-buffer)
+                          (insert url)
+                          (goto-char (point-min))
+                          (re-search-forward "://" nil t 1)
+                          (re-search-forward "/" nil t 1)
+                          (backward-char 1)
+                          (let ((end (point)))
+                            (skip-chars-backward "^[\s\t\n]")
+                            (buffer-substring-no-properties
+                             (point) end)))))
+               (error (setq exist nil)))
+             (if exist url (km-browse-format-to-google-search
+                            string)))))))
 
 (defun km-browse-action-default (url)
   "Browse URL with function `browse-url-generic'."
@@ -1036,9 +1035,7 @@ If nil, `km-browse-action-default' is used by default."
                                                     (current-local-map))))
                      (use-local-map map))))
              (browse-url (read-string "URL: ")))))
-      (funcall (or action 'km-browse-action-default) url))))
-
-
+      (funcall (or action #'km-browse-action-default) url))))
 
 (defun km-browse-completing-read (prompt urls &optional annotate-fn keymap)
   "Read URLS in minibuffer with PROMPT, ANNOTATE-FN and KEYMAP."
@@ -1089,8 +1086,8 @@ called interactively, or `identity' otherwise."
           "History"
           (km-browse-init-chrome-history-candidates))))
     (funcall (or action (if (called-interactively-p 'any)
-                            'km-browse-action-default
-                          'identity))
+                            #'km-browse-action-default
+                          #'identity))
              (km-browse-format-to-url url))))
 
 
@@ -1106,8 +1103,8 @@ Optional argument ACTION is a function to call with the selected URL."
           (km-browse-read-chrome-bookmarks)
           'km-browse-annotate)))
     (funcall (or action (if (called-interactively-p 'any)
-                            'km-browse-action-default
-                          'identity))
+                            #'km-browse-action-default
+                          #'identity))
              (km-browse-format-to-url url))))
 
 ;;;###autoload
