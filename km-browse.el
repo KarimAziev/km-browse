@@ -931,9 +931,12 @@ Default value of SEPARATOR is space."
              (out-file (or output-file
                            (expand-file-name (concat out-file-base ".pdf")
                                              (temporary-file-directory))))
-             (args `(,@'("--headless" "--disable-gpu" "--enable-logging")
+             (args `(,@'("--headless" "--run-all-compositor-stages-before-draw"
+                         "--disable-gpu"
+                         "--print-to-pdf-no-header"
+                         "--enable-logging")
                      ,(format "--print-to-pdf=%s"
-                              (shell-quote-argument out-file))
+                       (shell-quote-argument out-file))
                      ,url)))
         (let ((proc (get-process chrome))
               (buffer (generate-new-buffer (format "*%s*" chrome))))
