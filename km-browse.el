@@ -869,7 +869,6 @@ If windows doesn't exists, split current window."
   (when fn (apply fn args)))
 
 
-;;;###autoload
 (defun km-browse-xwidget-browse (&optional url &rest _ignored)
   "Open URL with xvidget in right window."
   (interactive)
@@ -882,19 +881,23 @@ If windows doesn't exists, split current window."
      #'km-browse-with-xwidget-or-fallback-browse url)))
 
 
-;;;###autoload
 (defun km-browse-chrome-xwidget-and-exit ()
   "Exit minibuffer and `km-browse-xwidget-browse'."
   (interactive)
   (km-browse-chrome-exit-with-action #'km-browse-xwidget-browse))
 
-;;;###autoload
+
+(defun km-browse-eww-and-exit ()
+  "Call `eww' with the current candidate and exit the minibuffer."
+  (interactive)
+  (km-browse-chrome-exit-with-action #'eww))
+
+
 (defun km-browse-chrome-pdf-and-exit ()
   "Exit minibuffer and `km-browse-action-pdf'."
   (interactive)
   (km-browse-chrome-exit-with-action #'km-browse-action-pdf))
 
-;;;###autoload
 (defun km-browse-chrome-localhost-and-exit ()
   "Exit minibuffer and `km-browse-localhost'."
   (interactive)
@@ -969,14 +972,12 @@ Default value of SEPARATOR is space."
     (error "Can not find chrome executable")))
 
 
-;;;###autoload
 (defun km-browse-insert ()
   "Insert current url and exit minibuffer."
   (interactive)
   (km-browse-chrome-exit-with-action #'km-browse-insert-action))
 
 
-;;;###autoload
 (defun km-browse-chrome-copy ()
   "Copy current url without exiting minibuffer."
   (interactive)
@@ -987,17 +988,22 @@ Default value of SEPARATOR is space."
       (message "Copied %s" current))))
 
 
-;;;###autoload
 (defun km-browse-chrome-xwidget-no-exit ()
   "Preview current minibuffer url without exiting minibuffer."
   (interactive)
   (km-browse-chrome-action-no-exit #'km-browse-xwidget-browse))
 
+(defun km-browse-with-eww-no-exit ()
+  "Open the current minibuffer candidate in EWW without exiting the minibuffer."
+  (interactive)
+  (km-browse-chrome-action-no-exit #'eww))
+
 (defvar km-browse-actions-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-j") #'km-browse-chrome-xwidget-no-exit)
+    (define-key map (kbd "C-j") #'km-browse-with-eww-no-exit)
     (define-key map (kbd "C-<return>") #'km-browse-chrome-browse-new)
-    (define-key map (kbd "C-c C-o o") #'km-browse-chrome-xwidget-and-exit)
+    (define-key map (kbd "C-c C-o e") #'km-browse-eww-and-exit)
+    (define-key map (kbd "C-c C-o x") #'km-browse-chrome-xwidget-and-exit)
     (define-key map (kbd "C-c C-p") #'km-browse-chrome-pdf-and-exit)
     (define-key map (kbd "C-c C-l") #'km-browse-chrome-localhost-and-exit)
     (define-key map (kbd "C-c C-i") #'km-browse-insert)
