@@ -39,6 +39,13 @@
   :type 'url
   :group 'km-browse)
 
+(defcustom km-browse-pandoc-options '("--quiet"
+                                      "--self-contained"
+                                      "--wrap=none")
+  "Extra pandoc options."
+  :group 'km-browse
+  :type '(repeat string))
+
 
 (defvar km-browse-url-re
   "\\(\\(http[s]?://\\|git@\\|file:/~*\\)*\\(www\\.\\)?\\([a-z0-9-]+\\(\\(:[0-9]*\\)\\|\\.[a-z]+\\)+/?[a-z]?[^;\s\t\n\r\f|\\]]*[a-z0-9-]+\\)\\)"
@@ -283,6 +290,47 @@ Optional argument SERVICE is a filter."
                 (cons (car parts)
                       (car (reverse parts)))))
             filtered-lines)))
+
+
+(defun km-browse-print-open-ports (&optional service)
+  (interactive (list
+                (when current-prefix-arg
+                  (read-string "Service: "))))
+  (require 'ansi-color)
+  (let* ((mini-wind (minibuffer-selected-window))
+         (buff-name (concat "*km-browse-nmap*"))
+         (buff (progn
+                 (when (get-buffer buff-name)
+                   (kill-buffer buff-name))
+                 (get-buffer-create buff-name)))
+         (proc
+          (start-process buff-name buff "nmap" "localhost")))
+    (with-current-buffer buff
+      (let ((inhibit-read-only t))
+        (erase-buffer)))
+    (set-process-sentinel
+     proc
+     (lambda (process _)
+       (let ((buff (process-buffer process)))
+         (when (and (buffer-live-p buff)
+                    (or (not mini-wind)
+                        (eq mini-wind
+                            (minibuffer-selected-window))))
+           (with-current-buffer buff
+             (ansi-color-apply-on-region (point-min)
+                                         (point-max))
+             (with-selected-window (km-browse-window-right-get-or-create)
+               (pop-to-buffer-same-window buff)))))))
+    (set-process-filter
+     proc
+     (lambda (proc string)
+       (when-let ((buf (process-buffer proc)))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (save-excursion
+               (goto-char (point-max))
+               (insert string)))))))
+    proc))
 
 
 (defun km-browse-convert-webkit-to-date-in-seconds (webkit-timestamp)
@@ -1407,14 +1455,29 @@ Optional argument ACTION is a function to call with the selected URL. If nil,
                (list "-f" input-type "-t" output-type) options)))
     (with-temp-buffer
       (insert string)
-      (if
-          (eq 0 (apply #'call-process-region (append (list (point-min)
-                                                           (point-max))
-                                                     args)))
-          (buffer-string)
-        (minibuffer-message "Pandoc error: %s"
-                            (buffer-string))
-        nil))))
+      (let ((success (zerop (apply #'call-process-region (append (list
+                                                                  (point-min)
+                                                                  (point-max))
+                                                                 args)))))
+        (cond (success
+               (pcase output-type
+                 ("org" (km-browse--strip-org-properties)))
+               (buffer-string))
+              (t (minibuffer-message "Pandoc error: %s"
+                                     (buffer-string))
+                 nil))))))
+
+(defun km-browse--strip-org-properties ()
+  "Remove specific Org properties from the current buffer."
+  (save-excursion
+    (goto-char (point-min))
+    (let ((case-fold-search t))
+      (while (re-search-forward
+              ":PROPERTIES:[\n]+[\s\t]+:CUSTOM_ID:[\s\t][^\n]+[\n]+[\s\t]+:END:[\n]"
+              nil t
+              1)
+        (replace-match "")))))
+
 
 ;;;###autoload
 (defun km-browse-download-file (&optional url directory download-name)
@@ -1428,7 +1491,9 @@ Optional argument ACTION is a function to call with the selected URL. If nil,
                                                     url)))
                     (or directory (read-directory-name "Save to: ")))))
     (write-region (if (equal (file-name-extension filename) "org")
-                      (km-browse-pandoc-from-string content "html" "org")
+                      (apply #'km-browse-pandoc-from-string content
+                             "html" "org"
+                             km-browse-pandoc-options)
                     content)
                   nil filename
                   nil
