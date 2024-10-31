@@ -291,7 +291,7 @@ Optional argument SERVICE is a filter."
                       (car (reverse parts)))))
             filtered-lines)))
 
-
+;;;###autoload
 (defun km-browse-print-open-ports (&optional service)
   (interactive (list
                 (when current-prefix-arg
