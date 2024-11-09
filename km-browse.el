@@ -324,7 +324,7 @@ Optional argument SERVICE is a filter."
     (set-process-filter
      proc
      (lambda (proc string)
-       (when-let ((buf (process-buffer proc)))
+       (when-let* ((buf (process-buffer proc)))
          (with-current-buffer buf
            (let ((inhibit-read-only t))
              (save-excursion
@@ -477,7 +477,7 @@ Return stdout output if command existed with zero status, nil otherwise."
   (and str
        (not (string-match-p "[\s\t\n;]\\|\\\\[(]" str))
        (string-match-p "^[a-z0-9-]" str)
-       (if-let ((m (string-match-p "http[s]?:" str)))
+       (if-let* ((m (string-match-p "http[s]?:" str)))
            (equal m 0)
          t)
        (string-match-p km-browse-url-re
@@ -658,7 +658,7 @@ LOCALHOST-STR should match \"localhost:\"."
 (defun km-browse-action-default (url)
   "Browse URL with function `browse-url-generic'."
   (require 'browse-url)
-  (if-let ((wind (seq-find (lambda (w)
+  (if-let* ((wind (seq-find (lambda (w)
                              (with-selected-window w
                                (memq major-mode '(xwidget-webkit-mode))))
                            (window-list))))
@@ -669,7 +669,7 @@ LOCALHOST-STR should match \"localhost:\"."
 (defun km-browse-get-nodejs-open-ports ()
   "Return list of integers which are open ports for nodejs program."
   (mapcar (lambda (it)
-            (when-let ((local-addr (seq-find (apply-partially #'string-match-p
+            (when-let* ((local-addr (seq-find (apply-partially #'string-match-p
                                                               ":[0-9]+")
                                              (split-string it "[\s\t]" t))))
               (string-to-number (car (last (split-string local-addr ":" t))))))
@@ -684,7 +684,7 @@ LOCALHOST-STR should match \"localhost:\"."
   "Replace host in URL to localhost and browse it."
   (let ((new-url (km-browse-url-to-localhost url
                                              (or
-                                              (when-let
+                                              (when-let*
                                                   ((ports
                                                     (km-browse-get-nodejs-open-ports)))
                                                 (if (> (length ports) 1)
@@ -696,7 +696,7 @@ LOCALHOST-STR should match \"localhost:\"."
 
 (defun km-browse-annotate (hashkey)
   "Convert HASHKEY to host annotated with title and time."
-  (if-let ((pl (km-browse-get-hash hashkey)))
+  (if-let* ((pl (km-browse-get-hash hashkey)))
       (let ((title (or (plist-get pl :title)
                        (plist-get pl :host)))
             (time (plist-get pl :time)))
@@ -789,7 +789,7 @@ their own target finder.  See for example
     (run-hook-wrapped
      'km-browse-chrome-targets-finders
      (lambda (fun)
-       (when-let ((result (funcall fun)))
+       (when-let* ((result (funcall fun)))
          (when (and (cdr-safe result)
                     (stringp (cdr-safe result))
                     (not (string-empty-p (cdr-safe result))))
@@ -809,14 +809,14 @@ their own target finder.  See for example
   "Restore *Completions* window height."
   (when (eq this-command 'minibuffer-next-completion)
     (remove-hook 'post-command-hook #'km-browse-web-restore-completions-wind)
-    (when-let ((win (get-buffer-window "*Completions*" 0)))
+    (when-let* ((win (get-buffer-window "*Completions*" 0)))
       (fit-window-to-buffer win completions-max-height))))
 
 (defun km-browse-chrome-action-no-exit (action)
   "Call ACTION with minibuffer candidate in its original window."
   (pcase-let ((`(,_category . ,current)
                (km-browse-chrome-get-current-candidate)))
-    (when-let ((win (get-buffer-window "*Completions*" 0)))
+    (when-let* ((win (get-buffer-window "*Completions*" 0)))
       (minimize-window win)
       (add-hook 'post-command-hook #'km-browse-web-restore-completions-wind))
     (with-minibuffer-selected-window
@@ -893,7 +893,7 @@ Minibuffer and completions windows are ignored."
   "Apply FN with ARGS in left or right window.
 If windows doesn't exists, split current window."
   (select-window
-   (if-let ((xwidget-buff (car (km-browse-buffers-in-mode 'xwidget-webkit-mode
+   (if-let* ((xwidget-buff (car (km-browse-buffers-in-mode 'xwidget-webkit-mode
                                                           (delete-dups
                                                            (mapcar
                                                             #'window-buffer
@@ -960,7 +960,7 @@ Optional argument SEPARATOR is a string to insert just after ITEM.
 Default value of SEPARATOR is space."
   (let ((parts))
     (setq parts
-          (if-let ((current-word (let* ((end (point))
+          (if-let* ((current-word (let* ((end (point))
                                         (beg (+ end (save-excursion
                                                       (skip-chars-backward
                                                        "^'\"\s\t\n)(}{][")))))
@@ -975,7 +975,7 @@ Default value of SEPARATOR is space."
 
 (defun km-browse-action-pdf (url &optional output-file)
   "Save URL as pdf to OUTPUT-FILE."
-  (if-let ((chrome (seq-find #'executable-find
+  (if-let* ((chrome (seq-find #'executable-find
                              '("google-chrome" "chrome" "chromium"))))
       (let* ((out-file-base
               "preview")
@@ -1356,7 +1356,7 @@ Optional argument ACTION is a function to call with the selected URL. If nil,
 
 (defun km-browse-chrome-session-dump-get-active-tabs ()
   "Return list of active tabs in google-chrome."
-  (when-let ((file (km-browse-chrome-guess-config-file)))
+  (when-let* ((file (km-browse-chrome-guess-config-file)))
     (when (executable-find "chrome-session-dump")
       (split-string
        (shell-command-to-string
@@ -1523,7 +1523,7 @@ filename at point in `dired'."
                                                       (text-properties-at
                                                        (point))))))
                    ('xwidget-webkit-mode
-                    (when-let ((sess
+                    (when-let* ((sess
                                 (when (fboundp 'xwidget-webkit-current-session)
                                   (xwidget-webkit-current-session))))
                       (xwidget-webkit-uri sess)))
