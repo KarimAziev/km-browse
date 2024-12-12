@@ -1326,24 +1326,31 @@ Optional argument ACTION is a function to call with the selected URL. If nil,
       (push '("X widget" . km-browse-xwidget-browse) choices))
     choices))
 
-(defun km-browse-prompt-browser ()
-  "Read a function for browse url with completion."
+(defun km-browse-prompt-browser (prompt)
+  "PROMPT user to select a browser function and return its associated value.
+
+Argument PROMPT is a string used to request user input for selecting a browser
+function."
   (let* ((choices (km-browse-url-get-functions-alist)))
-    (cdr (assoc (completing-read "Open with:\s" choices) choices))))
+    (cdr (assoc (completing-read prompt choices) choices))))
 
 (defun km-browse-xdg-open (file)
   "Open FILE with xdg-open."
   (and file (shell-command (concat "xdg-open " (shell-quote-argument file)))))
 
-(defun km-browse-open-current-file-in-browser-0 (&optional url program)
-  "Call PROGRAM with URL."
+(defun km-browse--open-url-in-browser (&optional url browse-fn)
+  "Open a URL in a browser, handling file URLs appropriately.
+
+Optional argument URL is the web address or file path to be opened.
+
+Optional argument BROWSE-FN is the function used to open the URL."
   (if (and
        url
        (not (string-prefix-p "file:/" url))
        (file-exists-p url)
-       (not (eq program 'km-browse-xdg-open)))
-      (funcall program (concat "file:///" url))
-    (funcall program url)))
+       (not (eq browse-fn 'km-browse-xdg-open)))
+      (funcall browse-fn (concat "file:///" url))
+    (funcall browse-fn url)))
 
 (defvar km-browse-chrome-sesssion-dump-buffer "*chrome-session-dump*")
 (defun km-browse-chrome-install-session-dump ()
@@ -1487,9 +1494,10 @@ Optional argument ACTION is a function to call with the selected URL. If nil,
   (require 'url)
   (let* ((content (km-browse-download-url url))
          (filename (expand-file-name
-                    (or download-name (read-string "Save as "
-                                                   (km-browse-url-to-download-base-name
-                                                    url)))
+                    (or download-name
+                        (read-string "Save as "
+                                     (km-browse-url-to-download-base-name
+                                      url)))
                     (or directory (read-directory-name "Save to: ")))))
     (write-region (if (equal (file-name-extension filename) "org")
                       (apply #'km-browse-pandoc-from-string content
@@ -1504,37 +1512,42 @@ Optional argument ACTION is a function to call with the selected URL. If nil,
 
 
 ;;;###autoload
-(defun km-browse-open-current-file-in-browser (&optional filename _new-session)
-  "Read a function to browse url with completions and open FILENAME.
-Default value of FILENAME is current buffer file name or
-filename at point in `dired'."
-  (interactive)
-  (require 'xwidget)
-  (require 'browse-url)
-  (let ((url (or filename
-                 (pcase (seq-find #'derived-mode-p '(dired-mode org-mode
-                                                                xwidget-webkit-mode))
-                   ('dired-mode
-                    (when (and (fboundp 'dired-get-marked-files)
-                               (fboundp 'dired-file-name-at-point))
-                      (or (dired-get-marked-files)
-                          (dired-file-name-at-point))))
-                   ('org-mode (or (cdr-safe (seq-find (lambda (it)
-                                                        (eq (car-safe it) :uri))
-                                                      (text-properties-at
-                                                       (point))))))
-                   ('xwidget-webkit-mode
-                    (when-let* ((sess
-                                (when (fboundp 'xwidget-webkit-current-session)
-                                  (xwidget-webkit-current-session))))
-                      (xwidget-webkit-uri sess)))
-                   (_ buffer-file-name))))
-        (fn (km-browse-prompt-browser)))
-    (if (listp url)
-        (dolist (u url)
-          (when u
-            (km-browse-open-current-file-in-browser-0 u fn)))
-      (km-browse-open-current-file-in-browser-0 url fn))))
+(defun km-browse-open-current-file-in-browser (filename fn)
+  "Open the current file or URL in a selected web browser.
+
+Argument FILENAME is the file path or URL to be opened in the browser.
+
+Argument FN is the function used to open the file or URL."
+  (interactive
+   (let* ((file
+           (pcase (seq-find #'derived-mode-p '(dired-mode org-mode
+                                               xwidget-webkit-mode))
+             ('dired-mode
+              (when (and (fboundp 'dired-get-marked-files)
+                         (fboundp 'dired-file-name-at-point))
+                (or (dired-get-marked-files)
+                    (dired-file-name-at-point))))
+             ('org-mode (or (cdr-safe (seq-find (lambda (it)
+                                                  (eq (car-safe it)
+                                                      :uri))
+                                                (text-properties-at
+                                                 (point))))))
+             ('xwidget-webkit-mode
+              (when-let* ((sess
+                           (when (fboundp
+                                  'xwidget-webkit-current-session)
+                             (xwidget-webkit-current-session))))
+                (xwidget-webkit-uri sess)))
+             (_ (or buffer-file-name
+                    (read-file-name "File: ")))))
+          (fn (km-browse-prompt-browser (format "Open %s with: "
+                                                file))))
+     (list file fn)))
+  (if (listp filename)
+      (dolist (u filename)
+        (when u
+          (km-browse--open-url-in-browser u fn)))
+    (km-browse--open-url-in-browser filename fn)))
 
 (provide 'km-browse)
 ;;; km-browse.el ends here
