@@ -61,12 +61,7 @@
 
 (defvar km-browse-minibuffer-history nil)
 
-;;;###autoload
-(defun km-browse-multi-source-select-prev ()
-  "Select the previous item in a multi-source browser."
-  (interactive)
-  (throw 'next
-         -1))
+
 (defvar km-browse-multi-source-minibuffer-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C->") #'km-browse-multi-source-select-next)
@@ -89,14 +84,19 @@
 (defvar km-browse-multi-source--sources-list nil
   "Normalized sources.")
 
-;;;###autoload
+(defun km-browse-multi-source-select-prev ()
+  "Select the previous item in a multi-source browser."
+  (interactive)
+  (throw 'next
+         -1))
+
 (defun km-browse-multi-source-select-next ()
   "Throw to the catch tag ='next with 1."
   (interactive)
   (throw 'next
          1))
 
-;;;###autoload
+
 (defun km-browse-multi-source-read-source ()
   "Prompt for a source and calculate its relative position."
   (interactive)
