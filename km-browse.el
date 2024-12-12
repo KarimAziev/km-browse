@@ -294,10 +294,9 @@ Optional argument SERVICE is a filter."
             filtered-lines)))
 
 ;;;###autoload
-(defun km-browse-print-open-ports (&optional service)
-  (interactive (list
-                (when current-prefix-arg
-                  (read-string "Service: "))))
+(defun km-browse-print-open-ports ()
+  "Display open ports on localhost using nmap in a new buffer."
+  (interactive)
   (require 'ansi-color)
   (let* ((mini-wind (minibuffer-selected-window))
          (buff-name (concat "*km-browse-nmap*"))
