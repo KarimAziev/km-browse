@@ -34,6 +34,8 @@
 (require 'url)
 (require 'url-http)
 
+(declare-function ansi-color-apply-on-region "ansi-color")
+
 (defcustom km-browse-search-engine "http://www.google.com/search?q=%s"
   "Default search engine."
   :type 'url
