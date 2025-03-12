@@ -1411,14 +1411,37 @@ Optional argument BROWSE-FN is the function used to open the URL."
                               url)
                              "/" t))))))
 
-(defun km-browse-download-as-org (url filename)
-  "Download URL in org mode format and save it as FILENAME."
-  (let ((str (shell-command-to-string (concat
-                                       "pandoc -f html -t org "
-                                       url))))
-    (write-region str nil filename)
-    (when (file-exists-p filename)
-      (find-file filename))))
+(defun km-browse-download-as-org (url filename &rest args)
+  "Convert a URL's HTML content to an Org file using Pandoc.
+
+Argument URL is the web address of the content to be downloaded and converted.
+
+Argument FILENAME is the name of the file where the converted content will be
+saved.
+
+Remaining arguments ARGS are additional options passed to the \"pandoc\"
+command."
+  (let* ((buff-name (format "*km-browse--%s-%s*" url filename))
+         (buffer (progn
+                   (when (get-buffer buff-name)
+                     (kill-buffer buff-name))
+                   (get-buffer-create buff-name)))
+         (proc))
+    (setq proc (apply #'start-process buff-name buffer
+                      "pandoc"
+                      "-f" "html" "-t" "org" "--standalone" "-o" filename
+                      url
+                      args))
+    (set-process-sentinel
+     proc
+     (lambda (process _state)
+       (if (or (not (zerop (process-exit-status process)))
+               (not (file-exists-p filename)))
+           (when (buffer-live-p buffer)
+             (pop-to-buffer buffer))
+         (find-file filename)
+         (kill-buffer buffer))))
+    proc))
 
 (defun km-browse-f-change-ext (file new-ext)
   "Replace extension of FILE with NEW-EXT."
@@ -1488,27 +1511,33 @@ Optional argument BROWSE-FN is the function used to open the URL."
 
 
 ;;;###autoload
-(defun km-browse-download-file (&optional url directory download-name)
+(defun km-browse-download-file (url directory download-name)
   "Download file at URL into DIRECTORY under DOWNLOAD-NAME."
-  (interactive (list (km-browse-read-url "Download url: ")))
-  (require 'url)
-  (let* ((content (km-browse-download-url url))
-         (filename (expand-file-name
-                    (or download-name
-                        (read-string "Save as "
-                                     (km-browse-url-to-download-base-name
-                                      url)))
-                    (or directory (read-directory-name "Save to: ")))))
-    (write-region (if (equal (file-name-extension filename) "org")
-                      (apply #'km-browse-pandoc-from-string content
-                             "html" "org"
-                             km-browse-pandoc-options)
-                    content)
-                  nil filename
-                  nil
-                  'silent)
-    (when (file-exists-p filename)
-      (find-file filename))))
+  (interactive
+   (let* ((url (km-browse-read-url "Download url: "))
+          (dir (read-directory-name "Download to directory: "))
+          (name (read-string "Save as "
+                             (km-browse-url-to-download-base-name
+                              url))))
+     (list url dir name)))
+  (let ((filename (expand-file-name
+                   download-name
+                   directory)))
+    (cond ((string-suffix-p ".org" filename)
+           (km-browse-download-as-org url filename))
+          (t
+           (require 'url)
+           (let ((content (km-browse-download-url url)))
+             (write-region (if (equal (file-name-extension filename) "org")
+                               (apply #'km-browse-pandoc-from-string content
+                                      "html" "org"
+                                      km-browse-pandoc-options)
+                             content)
+                           nil filename
+                           nil
+                           'silent)
+             (when (file-exists-p filename)
+               (find-file filename)))))))
 
 
 ;;;###autoload
