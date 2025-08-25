@@ -1344,13 +1344,13 @@ function."
 Optional argument URL is the web address or file path to be opened.
 
 Optional argument BROWSE-FN is the function used to open the URL."
-  (if (and
-       url
-       (not (string-prefix-p "file:/" url))
-       (file-exists-p url)
-       (not (eq browse-fn 'km-browse-xdg-open)))
-      (funcall browse-fn (concat "file:///" url))
-    (funcall browse-fn url)))
+  (cond ((and
+          url
+          (not (string-prefix-p "file:/" url))
+          (file-exists-p url)
+          (not (memq browse-fn '(km-browse-xdg-open km-browse-openscad))))
+         (funcall browse-fn (concat "file:///" url)))
+        (t (funcall browse-fn url))))
 
 (defvar km-browse-chrome-sesssion-dump-buffer "*chrome-session-dump*")
 (defun km-browse-chrome-install-session-dump ()
@@ -1539,6 +1539,12 @@ command."
              (when (file-exists-p filename)
                (find-file filename)))))))
 
+(defun km-browse-openscad (file)
+  "Execute a shell command to open FILE with OpenSCAD.
+
+Argument FILE is the path to the OpenSCAD file to be opened."
+  (when file
+    (start-process "openscad" nil "openscad" file)))
 
 ;;;###autoload
 (defun km-browse-open-current-file-in-browser (filename fn)
@@ -1569,8 +1575,11 @@ Argument FN is the function used to open the file or URL."
                 (xwidget-webkit-uri sess)))
              (_ (or buffer-file-name
                     (read-file-name "File: ")))))
-          (fn (km-browse-prompt-browser (format "Open %s with: "
-                                                file))))
+          (fn
+           (cond ((eq major-mode 'scad-mode)
+                  #'km-browse-openscad)
+                 (t (km-browse-prompt-browser (format "Open %s with: "
+                                                      file))))))
      (list file fn)))
   (if (listp filename)
       (dolist (u filename)
