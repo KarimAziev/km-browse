@@ -48,6 +48,18 @@
   :group 'km-browse
   :type '(repeat string))
 
+(defcustom km-browse-chrome-session-dumb-preffered-dirs '("/opt/homebrew/bin"
+                                                          "/usr/local/bin"
+                                                          "/usr/bin")
+  "List of preferred directories for installing chrome-session-dump.
+
+These directories are checked in order to locate the binary file necessary for
+browsing Chrome sessions.
+
+It is used in `km-browse-chrome-install-session-dump'."
+  :group 'km-browse
+  :type '(repeat :tag "Directory" directory))
+
 
 (defvar km-browse-url-re
   "\\(\\(http[s]?://\\|git@\\|file:/~*\\)*\\(www\\.\\)?\\([a-z0-9-]+\\(\\(:[0-9]*\\)\\|\\.[a-z]+\\)+/?[a-z]?[^;\s\t\n\r\f|\\]]*[a-z0-9-]+\\)\\)"
@@ -1359,27 +1371,147 @@ Optional argument BROWSE-FN is the function used to open the URL."
          (funcall browse-fn (concat "file:///" url)))
         (t (funcall browse-fn url))))
 
-(defvar km-browse-chrome-sesssion-dump-buffer "*chrome-session-dump*")
+(defvar km-browse-chrome-sesssion-dump-buffer "*chrome-session-dump-install*")
+
+
+(defun km-browse--retrieve-http-error (status)
+  "Extract and format error details from STATUS.
+
+Argument STATUS is a plist containing the status of the HTTP request."
+  (pcase-let*
+      ((status-error (plist-get status :error))
+       (`(_err ,type ,code . _rest) status-error)
+       (description
+        (and status-error
+             (progn
+               (when (and (boundp
+                           'url-http-end-of-headers)
+                          url-http-end-of-headers)
+                 (goto-char url-http-end-of-headers))))))
+    (when status-error
+      (let* ((prefix (if (facep 'error)
+                         (propertize
+                          "Download error: "
+                          'face
+                          'error)
+                       "Download error: "))
+             (details (delq nil
+                            (list
+                             (when type  (format "%s" type))
+                             (when code (format "because of %s" code))
+                             (when description (format "- %s" description))))))
+        (if details
+            (concat prefix ": "
+                    (string-join
+                     details
+                     " "))
+          prefix)))))
+
 (defun km-browse-chrome-install-session-dump ()
-  "Install chrome-sesion-dump to /usr/bin/chrome-session-dump."
-  (let ((default-directory "/sudo::")
-        (inhibit-read-only t))
-    (async-shell-command
-     "sudo curl -o /usr/bin/chrome-session-dump -L 'https://github.com/lemnos/chrome-session-dump/releases/download/v0.0.2/chrome-session-dump-linux' && sudo chmod 755 /usr/bin/chrome-session-dump"
-     km-browse-chrome-sesssion-dump-buffer)))
+  "Download and install the chrome-session-dump tool.
+
+With a prefix argument prompt about destination."
+  (interactive)
+  (let* ((asset-name
+          (pcase system-type
+            ('darwin  "chrome-session-dump-osx")
+            ('gnu/linux "chrome-session-dump-linux")
+            (_ (error "Unsupported system-type: %s" system-type))))
+         (url (format
+               "https://github.com/lemnos/chrome-session-dump/releases/download/v0.0.2/%s"
+               asset-name))
+         (preferred-dirs km-browse-chrome-session-dumb-preffered-dirs)
+         (def-dir (seq-find #'file-directory-p preferred-dirs))
+         (dest-dir
+          (if (or current-prefix-arg (not def-dir))
+              (read-directory-name "Intall chrome-session-dump to: " def-dir)
+            def-dir))
+         (tmp (make-temp-file "chrome-session-dump-"))
+         (dest (expand-file-name "chrome-session-dump" dest-dir)))
+    (unless (or (not dest-dir)
+                (file-exists-p dest-dir))
+      (if (not dest-dir)
+          (user-error "No directory to download")
+        (user-error "Directory %s doesn't exists" dest-dir)))
+    (message "Starting download to %s" dest-dir)
+    (cl-labels
+        ((handle-retrieve
+           (status &rest cbargs)
+           (let* ((tmp (nth 0 cbargs))
+                  (dest (nth 1 cbargs))
+                  (orig-url (nth 2 cbargs))
+                  (count (or (nth 3 cbargs) 0))
+                  (buf (current-buffer))
+                  (redirect-url (plist-get status :redirect))
+                  (err (km-browse--retrieve-http-error status))
+                  (body-start)
+                  (body-end (point-max)))
+             (goto-char (point-min))
+             (cond (err
+                    (message err)
+                    (when (file-exists-p tmp)
+                      (ignore-errors (delete-file tmp))))
+                   (redirect-url
+                    (let ((new-url
+                           (if (string-match-p "\\`[a-zA-Z]+://" redirect-url)
+                               redirect-url
+                             (progn
+                               (require 'url-parse)
+                               (url-expand-file-name redirect-url)))))
+                      (if (>= count 10)
+                          (progn
+                            (message "Too many redirects (>%d)" 10)
+                            (when (file-exists-p tmp)
+                              (ignore-errors (delete-file tmp))))
+                        (when (buffer-live-p buf)
+                          (kill-buffer buf))
+                        (url-retrieve new-url #'handle-retrieve
+                                      (list tmp dest orig-url (1+ count))
+                                      nil t))))
+                   ((setq body-start
+                          (if (and (boundp 'url-http-end-of-headers)
+                                   url-http-end-of-headers)
+                              url-http-end-of-headers
+                            (progn (re-search-forward "\r?\n\r?\n" nil t 1)
+                                   (point))))
+                    (goto-char body-start)
+                    (skip-chars-forward "\s\t\n")
+                    (write-region (point) body-end tmp nil nil nil nil)
+                    (condition-case nil
+                        (progn
+                          (rename-file tmp dest t)
+                          (set-file-modes dest #o755)
+                          (message "Installed %s → %s" tmp dest))
+                      (error
+                       (let ((cmd
+                              (format
+                               "sudo mv %s %s && sudo chmod 755 %s"
+                               (shell-quote-argument tmp)
+                               (shell-quote-argument dest)
+                               (shell-quote-argument dest))))
+                         (async-shell-command cmd
+                                              km-browse-chrome-sesssion-dump-buffer)
+                         (message
+                          "Downloaded to %s; running sudo to move to %s"
+                          tmp dest)))))
+                   (t (message
+                       "Failed to parse HTTP response; download incomplete")
+                      (when (file-exists-p tmp)
+                        (ignore-errors (delete-file tmp))))))))
+      (url-retrieve url #'handle-retrieve (list tmp dest url 0) nil t))))
 
 
 (defun km-browse-chrome-session-dump-get-active-tabs ()
   "Return list of active tabs in google-chrome."
   (when-let* ((file (km-browse-chrome-guess-config-file)))
     (when (executable-find "chrome-session-dump")
-      (split-string
-       (shell-command-to-string
-        (concat "chrome-session-dump\s"
-                (shell-quote-argument
-                 (expand-file-name
-                  file))))
-       "\n" t))))
+      (with-temp-buffer
+        (if (zerop (call-process "chrome-session-dump" nil t nil
+                                 (expand-file-name
+                                  file)))
+            (split-string (buffer-string) "\n" t)
+          (message "Failed to retrieve active tabs: %s" (buffer-string))
+          nil)))))
 
 (defun km-browse-url-get-all-urls ()
   "Return list of urls from `kill-ring', buffer, chrome history, bookmarks etc."
@@ -1393,11 +1525,12 @@ Optional argument BROWSE-FN is the function used to open the URL."
                                                           'url t))
                                           (ignore-errors
                                             (gui-get-selection)))))))))
-    (append
-     extra-sources
-     (km-browse-chrome-session-dump-get-active-tabs)
-     (km-browse-read-chrome-bookmarks)
-     (km-browse-init-chrome-history-candidates))))
+    (delete-dups
+     (append
+      extra-sources
+      (km-browse-chrome-session-dump-get-active-tabs)
+      (km-browse-read-chrome-bookmarks)
+      (km-browse-init-chrome-history-candidates)))))
 
 (defun km-browse-read-url (&optional prompt)
   "Read an url with PROMPT and completion from `km-browse-url-get-all-urls'."
