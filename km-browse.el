@@ -48,6 +48,18 @@
   :group 'km-browse
   :type '(repeat string))
 
+(defcustom km-browse-url-exclude-regexps '("^\\(https://www\\.\\)?google\\.com/search?")
+  "List of regular expressions to exclude certain URLs from processing.
+
+A list of regular expressions used to exclude certain URLs from being
+processed. Each element should be a string representing a regular
+expression pattern.
+
+URLs matching any of these patterns will be ignored during operations
+such as browsing history."
+  :group 'km-browse
+  :type 'boolean)
+
 (defcustom km-browse-chrome-session-dumb-preffered-dirs '("/opt/homebrew/bin"
                                                           "/usr/local/bin"
                                                           "/usr/bin")
@@ -60,6 +72,26 @@ It is used in `km-browse-chrome-install-session-dump'."
   :group 'km-browse
   :type '(repeat :tag "Directory" directory))
 
+(defcustom km-browse-url-sources
+  '(("All" . km-browse-all-urls)
+    ("Chrome Bookmarks " . km-browse-read-chrome-bookmarks)
+    ("Chrome History" . km-browse-init-chrome-history-candidates)
+    ("Buffer and kill ring urls" . km-browse-urls-from-buffer-and-kill-ring)
+    ("Hosts" .
+     (lambda ()
+       (mapcar #'car
+               (km-browse-all-urls-groupped-alist)))))
+  "Alist of source names and either list of urls or functions.
+If value of cons is function, it will be called without arguments and
+should return list of urls."
+  :type '(alist
+          :key-type (string :tag "Prompt")
+          :value-type (choice
+                       (repeat :tag "List of urls"
+                               (string :tag "Url"))
+                       (function :tag "Function")))
+  :group 'km-browse)
+
 
 (defvar km-browse-url-re
   "\\(\\(http[s]?://\\|git@\\|file:/~*\\)*\\(www\\.\\)?\\([a-z0-9-]+\\(\\(:[0-9]*\\)\\|\\.[a-z]+\\)+/?[a-z]?[^;\s\t\n\r\f|\\]]*[a-z0-9-]+\\)\\)"
@@ -71,7 +103,7 @@ It is used in `km-browse-chrome-install-session-dump'."
 (defvar km-browse-chrome-history-hash (make-hash-table :test 'equal))
 (defvar km-browse-chrome-bookmarks-hash (make-hash-table :test 'equal))
 (defvar km-browse-eww-bookmarks-hash (make-hash-table :test 'equal))
-(defvar km-browse-chrome-history-hash (make-hash-table :test 'equal))
+
 
 (defvar km-browse-minibuffer-history nil)
 
@@ -503,14 +535,19 @@ Return stdout output if command existed with zero status, nil otherwise."
          (urlobj (url-generic-parse-url url))
          (hash-key url)
          (pl `(:url ,url
-                    :title ,title
-                    :time
-                    ,time
-                    :protocol ,(url-type urlobj)
-                    :port ,(url-port-if-non-default urlobj)
-                    :host ,(url-host urlobj))))
-    (puthash hash-key pl km-browse-chrome-history-hash)
-    url))
+               :title ,title
+               :time
+               ,time
+               :protocol ,(url-type urlobj)
+               :port ,(url-port-if-non-default urlobj)
+               :host ,(url-host urlobj))))
+    (when (or
+           (not km-browse-url-exclude-regexps)
+           (not (seq-find (lambda (re)
+                            (string-match-p re url))
+                          km-browse-url-exclude-regexps)))
+      (puthash hash-key pl km-browse-chrome-history-hash)
+      url)))
 
 (defun km-browse-group-urls (urls)
   "Group URLS by url type and host."
@@ -520,14 +557,24 @@ Return stdout output if command existed with zero status, nil otherwise."
                             "://"
                             (url-host obj))))
                 (copy-tree urls)))
+
+(defun km-browse--filter-urls (urls)
+  (if (not km-browse-url-exclude-regexps)
+      urls
+    (let ((regex (mapconcat (apply-partially #'format "\\(%s\\)")
+                            km-browse-url-exclude-regexps "\\|")))
+      (seq-remove (apply-partially #'string-match regex)
+                  urls))))
+
 (defun km-browse-all-urls ()
   "Return all known urls."
-  (seq-uniq
-   (append
-    (km-browse-urls-from-buffer-and-kill-ring)
-    (km-browse-read-chrome-bookmarks)
-    (km-browse-chrome-session-dump-get-active-tabs)
-    (km-browse-init-chrome-history-candidates))))
+  (delete-dups
+   (km-browse--filter-urls
+    (append
+     (km-browse-urls-from-buffer-and-kill-ring)
+     (km-browse-read-chrome-bookmarks)
+     (km-browse-chrome-session-dump-get-active-tabs)
+     (km-browse-init-chrome-history-candidates)))))
 
 (defun km-browse-all-urls-groupped-alist ()
   "Return all known urls urls groupped by url type and hostname."
@@ -561,8 +608,9 @@ Return stdout output if command existed with zero status, nil otherwise."
           (let (result)
             (goto-char (point-min)) ;; -ascii delimited by 0x1F and 0x1E
             (while (re-search-forward (rx (group (+? anything)) "\x1e") nil t)
-              (let ((parts (split-string (match-string 1) "\x1f")))
-                (push (km-browse-make-chrome-history-item parts) result)))
+              (when-let* ((parts (split-string (match-string 1) "\x1f"))
+                          (item (km-browse-make-chrome-history-item parts)))
+                (push item result)))
             (delete-file tmp)
             (nreverse result))
         (error "Command sqlite3 failed: %s" (buffer-string))))))
@@ -1246,25 +1294,7 @@ Optional argument ACTION is a function to call with the URL. If not provided,
   (delete-dups (append (km-browse-urls-from-kill-ring)
                        (km-browse-urls-from-buffer))))
 
-(defcustom km-browse-url-sources
-  '(("All" . km-browse-all-urls)
-    ("Chrome Bookmarks " . km-browse-read-chrome-bookmarks)
-    ("Chrome History" . km-browse-init-chrome-history-candidates)
-    ("Buffer and kill ring urls" . km-browse-urls-from-buffer-and-kill-ring)
-    ("Hosts" .
-     (lambda ()
-       (mapcar #'car
-               (km-browse-all-urls-groupped-alist)))))
-  "Alist of source names and either list of urls or functions.
-If value of cons is function, it will be called without arguments and
-should return list of urls."
-  :type '(alist
-          :key-type (string :tag "Prompt")
-          :value-type (choice
-                       (repeat :tag "List of urls"
-                               (string :tag "Url"))
-                       (function :tag "Function")))
-  :group 'km-browse)
+
 
 
 ;;;###autoload
@@ -1515,22 +1545,22 @@ With a prefix argument prompt about destination."
 
 (defun km-browse-url-get-all-urls ()
   "Return list of urls from `kill-ring', buffer, chrome history, bookmarks etc."
-  (let ((extra-sources
-         (seq-filter
-          #'km-browse-web-url-p
-          (mapcar #'substring-no-properties
-                  (append (append (copy-tree kill-ring)
-                                  (copy-tree minibuffer-history))
-                          (delq nil (list (ignore-errors (thing-at-point
-                                                          'url t))
-                                          (ignore-errors
-                                            (gui-get-selection)))))))))
-    (delete-dups
-     (append
-      extra-sources
-      (km-browse-chrome-session-dump-get-active-tabs)
-      (km-browse-read-chrome-bookmarks)
-      (km-browse-init-chrome-history-candidates)))))
+  (let* ((extra-sources
+          (seq-filter
+           #'km-browse-web-url-p
+           (mapcar #'substring-no-properties
+                   (append (append (copy-tree kill-ring)
+                                   (copy-tree minibuffer-history))
+                           (delq nil (list (ignore-errors (thing-at-point
+                                                           'url t))
+                                           (ignore-errors
+                                             (gui-get-selection))))))))
+         (items (append
+                 (delete-dups extra-sources)
+                 (km-browse-chrome-session-dump-get-active-tabs)
+                 (delete-dups (km-browse-read-chrome-bookmarks))
+                 (delete-dups (km-browse-init-chrome-history-candidates)))))
+    items))
 
 (defun km-browse-read-url (&optional prompt)
   "Read an url with PROMPT and completion from `km-browse-url-get-all-urls'."
