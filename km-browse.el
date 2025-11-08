@@ -1320,6 +1320,8 @@ Optional argument ACTION is a function to call with the selected URL. If nil,
                                        browse-url--browser-defcustom-type))))))
     (when (executable-find "xdg-open")
       (push '("XDG open" . km-browse-xdg-open) choices))
+    (when (executable-find "open")
+      (push '("Open" . km-browse-open) choices))
     (when (and (fboundp 'xwidget-webkit-browse-url)
                (not (derived-mode-p 'xwidget-webkit-mode)))
       (push '("X widget" . km-browse-xwidget-browse) choices))
@@ -1336,6 +1338,12 @@ function."
 (defun km-browse-xdg-open (file)
   "Open FILE with xdg-open."
   (and file (shell-command (concat "xdg-open " (shell-quote-argument file)))))
+
+(defun km-browse-open (file)
+  "Open the specified FILE using the default system application.
+
+Argument FILE is the path to the file to be opened."
+  (and file (shell-command (concat "open " (shell-quote-argument file)))))
 
 (defun km-browse--open-url-in-browser (&optional url browse-fn)
   "Open a URL in a browser, handling file URLs appropriately.
