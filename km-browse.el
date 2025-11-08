@@ -244,7 +244,6 @@ Allowed forms for SOURCES are
     (seq-filter
      #'file-exists-p
      `("~/Library/Application Support/Google/Chrome"
-       "~/Library/Application Support/Google/Chrome"
        "~/AppData/Local/Google/Chrome"
        "~/snap/chromium"
        "~/.config/google-chrome"
