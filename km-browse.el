@@ -48,7 +48,11 @@
   :group 'km-browse
   :type '(repeat string))
 
-(defcustom km-browse-url-exclude-regexps '("^\\(https://www\\.\\)?google\\.com/search?")
+
+
+(defcustom km-browse-url-exclude-regexps '("^\\(http[s]?://\\(www\\.\\)?\\)?google\\.com"
+                                           "^\\(http[s]?://\\(www\\.\\)?\\)?translate\\.google\\."
+                                           "^\\(https://www\\.\\)?bing\\.com")
   "List of regular expressions to exclude certain URLs from processing.
 
 A list of regular expressions used to exclude certain URLs from being
@@ -58,7 +62,7 @@ expression pattern.
 URLs matching any of these patterns will be ignored during operations
 such as browsing history."
   :group 'km-browse
-  :type 'boolean)
+  :type '(repeat regexp))
 
 (defcustom km-browse-chrome-session-dumb-preffered-dirs '("/opt/homebrew/bin"
                                                           "/usr/local/bin"
@@ -559,6 +563,9 @@ Return stdout output if command existed with zero status, nil otherwise."
                 (copy-tree urls)))
 
 (defun km-browse--filter-urls (urls)
+  "Filter out URLS matching any regex in `km-browse-url-exclude-regexps'.
+
+Argument URLS is a list of urls to be filtered based on exclusion patterns."
   (if (not km-browse-url-exclude-regexps)
       urls
     (let ((regex (mapconcat (apply-partially #'format "\\(%s\\)")
