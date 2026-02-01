@@ -1721,7 +1721,7 @@ command."
 
 Argument FILE is the path to the OpenSCAD file to be opened."
   (when file
-    (start-process "openscad" nil "openscad" file)))
+    (start-process "openscad" nil "openscad" "--autocenter" file)))
 
 ;;;###autoload
 (defun km-browse-open-current-file-in-browser (filename fn)
@@ -1753,7 +1753,7 @@ Argument FN is the function used to open the file or URL."
              (_ (or buffer-file-name
                     (read-file-name "File: ")))))
           (fn
-           (cond ((eq major-mode 'scad-mode)
+           (cond ((memq major-mode '(scad-mode scad-ts-mode))
                   #'km-browse-openscad)
                  (t (km-browse-prompt-browser (format "Open %s with: "
                                                       file))))))
